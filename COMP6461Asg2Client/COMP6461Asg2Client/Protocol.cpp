@@ -455,6 +455,9 @@ int Protocol::Protocol_Implementation(FILE *Fin, int Total, SOCKET socket, SOCKA
 
 ///////////////////////////////////////////////////////
 //RECEIVE//////////////////////////////////////////
+/*
+Here NEED TO MODIFIED, 
+*/
 
 int Protocol::Receive(FILE *fin,SOCKET socket,SOCKADDR_IN from,int totalpacketnumber,int w_size)
 {
@@ -482,7 +485,10 @@ int Protocol::Receive(FILE *fin,SOCKET socket,SOCKADDR_IN from,int totalpacketnu
 			printf("Received packet : %d\n",recv_packet);
 		}
 		else
-		{
+		{	/*
+			Here NEED TO MODIFIED,  USE POOL INSTEAD OF NEXT SEQUENCE, ACK PACKET IN WINDOW
+			*/
+
 			acknak.sequencenumber = nextsequence;
 			acknak.type = PROTOCOL_NAK;
 			printf("receive wrong packet , number is %d , expecting is %d\n",packet.sequencenumber,nextsequence);
