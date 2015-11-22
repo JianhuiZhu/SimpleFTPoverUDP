@@ -5,6 +5,5 @@ handshake complete.
 receive packet 1
 sent ACK for packet  1
 sent packet  1
+time out, resent packet  1
 receive ACK for packet  1
-sent packet  0
-receive ACK for packet  0

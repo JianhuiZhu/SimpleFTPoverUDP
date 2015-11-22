@@ -7,5 +7,3 @@ sent packet 1
 receive ACK for packet 1
 receive packet 1
 sent ACK for packet 1
-receive packet 0
-sent ACK for packet 0

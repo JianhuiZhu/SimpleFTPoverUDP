@@ -117,10 +117,10 @@ void TcpServer::start()
 
 		FILE *pfile;
 		pfile = fopen(controlpacket.filename,"wb");
-		GBNProtocol *gbn = new GBNProtocol();
+		Protocol *gbn = new Protocol();
 		int total = (controlpacket.filesize/FILECHUNK + (controlpacket.filesize%FILECHUNK !=0?1:0));
 		int w_size = 4;
-		gbn->GBN_Receive(pfile,serverSock,ClientAddr,total,w_size);
+		gbn->Receive(pfile,serverSock,ClientAddr,total,w_size);
 		fclose(pfile);
 		printf("receiving completes...");
 		system("pause");
@@ -178,8 +178,8 @@ void TcpServer::start()
 			pfile = fopen(cp.filename,"rb");
 			int total = (fileSize/FILECHUNK + (fileSize%FILECHUNK !=0?1:0));
 			int w_size = 4;
-			GBNProtocol *gbn = new GBNProtocol();
-			gbn->Protocol(pfile,total,serverSock,ClientAddr,ClientAddr,w_size);
+			Protocol *gbn = new Protocol();
+			gbn->Protocol_Implementation(pfile, total, serverSock, ClientAddr, ClientAddr, w_size);
 			fclose(pfile);
 			printf("sending file completed..\n");
 			RecvDuppacket(serverSock,dup,sizeof(dup));
