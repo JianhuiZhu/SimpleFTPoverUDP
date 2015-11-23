@@ -77,7 +77,7 @@ public:
 	//int MoveBaseToAck(deque<Packet>,ACKNAK);
 	int SendNewFrameOfWindow(SOCKET,deque<Packet>,SOCKADDR_IN);
 	int GetPacketPositionInWindowByAck(deque<Packet>,ACKNAK);
-	int Protocol_Implementation(FILE *,int,SOCKET,SOCKADDR_IN,SOCKADDR_IN,int);
+	int Send(FILE *,int,SOCKET,SOCKADDR_IN,SOCKADDR_IN,int);
 	set<int> GetPreviousACKNAKInWindow(deque<Packet>,ACKNAK);
 	int get_timeout(struct timeval2, struct timeval *);
 

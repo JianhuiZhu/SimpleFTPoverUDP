@@ -158,7 +158,7 @@ int Protocol::MoveWindowToNAK(deque<Packet> window,ACKNAK acknak)
 		int n = Window.back().sequencenumber + 1;
 		if(n>sequenceMax)
 			n=1;
-		//说明window内已经全部获得确认，未被确认的为window以外的第一个包
+		//说锟斤拷window锟斤拷锟窖撅拷全锟斤拷锟斤拷锟斤拷确锟较ｏ拷未锟斤拷确锟较碉拷为window锟斤拷锟斤拷锟侥碉拷一锟斤拷锟斤拷
 		if(acknak.sequencenumber==n)//this case u need move your window!! [1234]5 or[6789]1
 		{
 			//The packets to be sent is less than the window size
@@ -323,7 +323,7 @@ set<int> Protocol::GetPreviousACKNAKInWindow(deque<Packet> window,ACKNAK acknak)
 }
 
 
-int Protocol::Protocol_Implementation(FILE *Fin, int Total, SOCKET socket, SOCKADDR_IN dst, SOCKADDR_IN from, int w_size)
+int Protocol::Send(FILE *Fin, int Total, SOCKET socket, SOCKADDR_IN dst, SOCKADDR_IN from, int w_size)
 {
 	int fromlen = sizeof(from);
 	initial();

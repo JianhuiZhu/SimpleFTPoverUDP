@@ -113,7 +113,7 @@ void TcpClient::run(int argc,char * argv[])
 			int total = (fileSize/FILECHUNK + (fileSize%FILECHUNK !=0?1:0));
 			int w_size = 4;
 			Protocol *gbn = new Protocol();
-			gbn->Protocol_Implementation(pfile,total,sock,RouterAddr,from,w_size);
+			gbn->Send(pfile,total,sock,RouterAddr,from,w_size);
 			fclose(pfile);
 		}
 	}
