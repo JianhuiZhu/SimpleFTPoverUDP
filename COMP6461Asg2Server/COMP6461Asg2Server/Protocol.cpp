@@ -7,8 +7,14 @@ void printwindow(deque<Packet> window)
 {
 	printf("   Window : ");
 	deque<Packet>::iterator it= window.begin();
-	for(;it!=window.end();it++)
-		printf("%d",it->sequencenumber);
+	for (; it != window.end(); it++){
+		if (it->isAck == PROTOCOL_ACK){
+			printf(" %d is acked ", it->sequencenumber);
+		}
+		else{
+			printf(" %d isn't acked ", it->sequencenumber);
+		}
+	}
 	printf("\n");
 }
 
@@ -343,7 +349,6 @@ int Protocol::Send(FILE *Fin, int Total, SOCKET socket, SOCKADDR_IN dst, SOCKADD
 	initialWindow(&fin,Total);
 	numberofsentpacket += SendWindow(socket,Window,dst);
 	printf("send inital window!\n");
-	//int count = -1; //temp variable for sequence number in window
 	set<int> checkset;//check if ack is previous ack in window
 	int NAKcheckset = 0;
 	ACKNAK acknak;
@@ -376,28 +381,25 @@ int Protocol::Send(FILE *Fin, int Total, SOCKET socket, SOCKADDR_IN dst, SOCKADD
 						}
 					}
 					for (int counter = 0; counter < count; counter++){
-						if (numberofsentpacket < numberoftotalpacket){
+						if (numofackpacket < numberoftotalpacket){
 							PutFileToWindow(&fin);
 							SendNewFrameOfWindow(socket, Window, dst);
 						}
 					}
 				}
 				else{
-					auto it = Window.begin();
-					while (it != Window.end()){
-						if (it->sequencenumber == acknak.sequencenumber){
-							if (it->isAck != PROTOCOL_ACK){
-								it->isAck = PROTOCOL_ACK;
-								numofackpacket++;
-								break;
-							}
+					for (auto it = Window.begin(); it != Window.end(); it++){
+						if (it->sequencenumber == acknak.sequencenumber&&it->isAck != PROTOCOL_ACK){
+							it->isAck = PROTOCOL_ACK;
+							numofackpacket++;
 						}
-						it++;
 					}
 				}
 				if (numofackpacket == numberoftotalpacket){
-					Window.clear();
-					break;
+							Window.clear();
+							break;
+						
+					
 				}
 				ready = SetTimeout(socket, 0, 3000000);
 				
