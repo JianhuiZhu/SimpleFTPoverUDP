@@ -83,16 +83,15 @@ int Protocol::initial()
 //put file into window when the protocol starts
 int Protocol::initialWindow(FILE *fin,int total)
 {
-	//check if file packet smaller than window
+	//seq : 1 ~ w_size
 	if(total < windowsize)
 	{
-		//put all file packet to window
 		for(int i=0;i<total;i++)
 			PutFileToWindow(fin);
 	}
 	else
 	{
-		//put part of file packet to window
+
 		for(int i = 0;i<windowsize;i++)
 		{
 			PutFileToWindow(fin);
@@ -105,12 +104,32 @@ void Protocol::PutFileToWindow(FILE *fin)
 {
 	Packet packet;
 	ZeroMemory(&packet.data,sizeof(packet.data));
+	/*
+		function fread parameters list
+
+		ptr:	packet.data 
+				Pointer to a block of memory with a size of at least (size*count) bytes, converted to a void*
+
+		size:	sizeof(char)
+				Size, in bytes, of each element to be read.
+				size_t is an unsigned integral type.
+
+		count:	FILECHUNK
+				Number of elements, each one with a size of size bytes.
+				size_t is an unsigned integral type.
+
+		stream:	fin
+				Pointer to a FILE object that specifies an input stream.
+
+		return	nbytes
+				# of bytes readed in
+	*/
 	int nbytes = fread(packet.data, sizeof(char), FILECHUNK, fin);
 	packet.length = nbytes * sizeof(char);
 	packet.sequencenumber = nextsequence;
 	Window.push_back(packet);
 	IncreaseSequence();
-
+	//filelocation is class member variable
 	printf("read %d from file. File location: %d\n", packet.length, filelocation);
 	filelocation++;
 	printf("end reading file\n");
@@ -120,6 +139,9 @@ void Protocol::PutFileToWindow(FILE *fin)
 
 int Protocol::MoveWindowToNAK(deque<Packet> window,ACKNAK acknak)
 {
+	/*
+		Find the location of packet which has not been acknowledged
+	*/
 	int count = 0;
 	int sequence = acknak.sequencenumber;
 	deque<Packet>::iterator it = window.begin();
@@ -130,15 +152,15 @@ int Protocol::MoveWindowToNAK(deque<Packet> window,ACKNAK acknak)
 		count ++;
 	}
 	//pop all packet before NAK
-	if(count==0)
-		return 0;
-	if(count==Window.size())//NAK out of bound ,before or after window
+	if(count==0||count==Window.size())//NAK out of bound ,before or after window
 	{
+		//access the last element's sequence number and +1, check if is larger than maximum sequence number
 		int n = Window.back().sequencenumber + 1;
 		if(n>sequenceMax)
 			n=1;
 		if(acknak.sequencenumber==n)//this case u need move your window!! [1234]5 or[6789]1
 		{
+			//The packets to be sent is less than the window size
 			if(Window.size()>numberoftotalpacket-numberofsentpacket)
 			{
 				for(int i=0;i<Window.size();i++)
@@ -157,7 +179,7 @@ int Protocol::MoveWindowToNAK(deque<Packet> window,ACKNAK acknak)
 			count = Window.size();//move window size
 		}
 		else
-			return 0;
+			return 0;//this case NAK is before window, do not need to move window
 	}
 	//test if the packet rest is less than the step that the window can move most
 	//count is the number that window can move
@@ -191,7 +213,7 @@ int Protocol::IncreaseSequence()
 		nextsequence = 1;
 	return nextsequence;
 }
-
+//To be Rewrited, sent the packet which is not acknowledged only instead of send the whole window
 int Protocol::SendWindow(SOCKET socket,deque<Packet> window,SOCKADDR_IN dst)
 {
 	deque<Packet>::iterator it = window.begin();
@@ -199,11 +221,13 @@ int Protocol::SendWindow(SOCKET socket,deque<Packet> window,SOCKADDR_IN dst)
 	//send window
 	for(;it!=window.end();it++)
 	{
-		Packet packet ;
-		ZeroMemory(&packet,sizeof(packet));
-		packet = *it;
-		sendto(socket,(char*)&packet,sizeof(packet),0,(struct sockaddr*)&dst,sizeof(dst));
-		count++;
+		if (it->isAck != PROTOCOL_ACK){
+			Packet packet;
+			ZeroMemory(&packet, sizeof(packet));
+			packet = *it;
+			sendto(socket, (char*)&packet, sizeof(packet), 0, (struct sockaddr*)&dst, sizeof(dst));
+			count++;
+		}
 	}
 	return count;
 }
@@ -249,24 +273,30 @@ bool Protocol::CheckIfSentOver(int base,int sequenceMax,int total)
 int Protocol::MoveWindowForNextPacket(deque<Packet> window,ACKNAK acknak)
 {
 	//pop the first packet in window and push_back new packet
-	window.pop_front();
-	PutFileToWindow(&fin);
-	MoveBase(acknak);
+	auto it = Window.begin();
+	int counter = 0;
+	while (it != Window.end()){
+		if (it->isAck == PROTOCOL_ACK){
+			window.pop_front();
+			//PutFileToWindow(&fin);
+			counter++;
+			break;
+		}
+		else{
+			break;
+		}
+		it++;
+	}
+	
 	return 0;
 }
 
-int Protocol::MoveBase(ACKNAK acknak)
-{
-	base = acknak.sequencenumber+1;
-	if(base > sequenceMax)
-		base = 1;
-	return base;
-}
 
 int Protocol::SendNewFrameOfWindow(SOCKET socket,deque<Packet> window,SOCKADDR_IN dst)
 {
 	Packet packet = window.back();
 	int nbytes = sendto(socket,(char*)&packet,sizeof(packet),0,(struct sockaddr*)&dst,sizeof(dst));
+	this->numberofsentpacket++;
 	return nbytes;
 }
 
@@ -300,8 +330,9 @@ set<int> Protocol::GetPreviousACKNAKInWindow(deque<Packet> window,ACKNAK acknak)
 }
 
 
-int Protocol::Protocol_Implementation(FILE *Fin, int Total, SOCKET socket, SOCKADDR_IN dst, SOCKADDR_IN from, int w_size)
+int Protocol::Send(FILE *Fin, int Total, SOCKET socket, SOCKADDR_IN dst, SOCKADDR_IN from, int w_size)
 {
+	int numofackpacket = 0;
 	int fromlen = sizeof(from);
 	initial();
 	windowsize = w_size;
@@ -311,6 +342,7 @@ int Protocol::Protocol_Implementation(FILE *Fin, int Total, SOCKET socket, SOCKA
 	numberoftotalpacket = Total;
 	initialWindow(&fin,Total);
 	numberofsentpacket += SendWindow(socket,Window,dst);
+	printf("send inital window!\n");
 	//int count = -1; //temp variable for sequence number in window
 	set<int> checkset;//check if ack is previous ack in window
 	int NAKcheckset = 0;
@@ -328,92 +360,53 @@ int Protocol::Protocol_Implementation(FILE *Fin, int Total, SOCKET socket, SOCKA
 		if(ready>0)
 		{
 			recvfrom(socket,(char*)&acknak,sizeof(acknak),0,(struct sockaddr*)&from,&fromlen);
-			if(acknak.type ==PROTOCOL_NAK)
-			{
-				if(NAKcheckset!=acknak.sequencenumber)
-				{
-					printf("Sender receive NAK, number is %d\n",acknak.sequencenumber);
-					NAKcheckset = acknak.sequencenumber;
-					int move = MoveWindowToNAK(Window,acknak);
-					if(numberofsentpacket!=numberoftotalpacket)
-						numberofsentpacket+=move;//calculate sent because new frame has been sent here.
-					printwindow(Window);
-					//MoveBaseToNAK(Window,acknak);
-					SendWindow(socket,Window,dst);
-					ready = SetTimeout(socket,0,300000);
-					//start recording current time
-					//ZeroMemory(&starttime_NAK,sizeof(starttime_NAK));
-					gettimeofday(&starttime_NAK,NULL);
-				}
-				else
-				{
-					struct timeval timeout;
-					get_timeout(starttime_NAK,&timeout);
-					ready = SetTimeout(socket,timeout.tv_sec,timeout.tv_usec);
-					printf("Sender receive NAK , number is %d\n",acknak.sequencenumber);
-					continue;
-				}
-			}
-			if(acknak.type ==PROTOCOL_ACK)
-			{
-				int p = GetPacketPositionInWindowByAck(Window,acknak);
-				if((checkset.find(acknak.sequencenumber)==checkset.end())&&p!=Window.size())//means cant find it and its post ACK
-				{
-					checkset = GetPreviousACKNAKInWindow(Window,acknak);
-					if(p+1>numberoftotalpacket-numberofsentpacket)//p+1 is the number of move 
-					{//still pop before and including that ACK
-						printf("Sender receive ACK %d, and window is close to end, position is %d\n ",acknak.sequencenumber,p);
-						for(int i=0;i<p+1;i++)
-							Window.pop_front();
-						for(int j=0;j<numberoftotalpacket-numberofsentpacket;j++)
-						{
-							printf("Sender move window and send packet %d\n",nextsequence);
-							PutFileToWindow(&fin);
-							SendNewFrameOfWindow(socket,Window,dst);
-							printwindow(Window);
-							numberofsentpacket++;
-						}
-						ready = SetTimeout(socket,0,300000);
-						//ZeroMemory(&starttime_ACK,sizeof(starttime_ACK));
-						gettimeofday(&starttime_ACK,NULL);
+				if (Window.front().sequencenumber == acknak.sequencenumber){
+					if (Window.front().isAck != PROTOCOL_ACK){
+						Window.front().isAck = PROTOCOL_ACK;
+						numofackpacket++;
 					}
-					else
-					{
-						printf("Sender receive ACK %d , position is %d\n",acknak.sequencenumber,p);
-						for(int i = 0;i<p+1;i++)
-						{
+					
+					int count = 0;
+					for (int cur = 0; cur<Window.size();count++){
+						if (Window[cur].isAck == PROTOCOL_ACK){
 							Window.pop_front();
-							printf("Sender move window and send packet %d\n",nextsequence);
-							PutFileToWindow(&fin);
-							SendNewFrameOfWindow(socket,Window,dst);
-							printwindow(Window);
-							numberofsentpacket++;
 						}
-						ready = SetTimeout(socket,0,300000);
-						//ZeroMemory(&starttime_ACK,sizeof(starttime_ACK));
-						gettimeofday(&starttime_ACK,NULL);
+						else{
+							break;
+						}
 					}
-					int b = MoveBase(acknak);
-					printf("base : %d last :%d total :%d sent :%d\n",b,lastframesequence,numberoftotalpacket,numberofsentpacket);
-					if((numberoftotalpacket==numberofsentpacket)&&(b==lastframesequence))
-						break;//sent over
+					for (int counter = 0; counter < count; counter++){
+						if (numberofsentpacket < numberoftotalpacket){
+							PutFileToWindow(&fin);
+							SendNewFrameOfWindow(socket, Window, dst);
+						}
+					}
 				}
-				else//if ack 1 received after ack 2 , ignore
-				{
-					struct timeval timeout;
-					get_timeout(starttime_ACK,&timeout);
-					ready = SetTimeout(socket,timeout.tv_sec,timeout.tv_usec);
-					printf("Sender receive ACK %d but do nothing\n",acknak.sequencenumber);
-					continue;
+				else{
+					auto it = Window.begin();
+					while (it != Window.end()){
+						if (it->sequencenumber == acknak.sequencenumber){
+							if (it->isAck != PROTOCOL_ACK){
+								it->isAck = PROTOCOL_ACK;
+								numofackpacket++;
+								break;
+							}
+						}
+						it++;
+					}
 				}
-			}
+				if (numofackpacket == numberoftotalpacket){
+					Window.clear();
+					break;
+				}
+				ready = SetTimeout(socket, 0, 3000000);
+				
 
 		}
 		else
 		{
-			//timeout,resend the whole window
 			SendWindow(socket,Window,dst);
-			ready = SetTimeout(socket,0,300000);
+			ready = SetTimeout(socket, 0, 3000000);
 			printf("timeout and resend window\n");
 			printwindow(Window);
 		}
@@ -424,6 +417,9 @@ int Protocol::Protocol_Implementation(FILE *Fin, int Total, SOCKET socket, SOCKA
 
 ///////////////////////////////////////////////////////
 //RECEIVE//////////////////////////////////////////
+/*
+Here NEED TO MODIFIED, 
+*/
 
 int Protocol::Receive(FILE *fin,SOCKET socket,SOCKADDR_IN from,int totalpacketnumber,int w_size)
 {
@@ -437,26 +433,40 @@ int Protocol::Receive(FILE *fin,SOCKET socket,SOCKADDR_IN from,int totalpacketnu
 	ZeroMemory(&packet,sizeof(packet));
 	ZeroMemory(&acknak,sizeof(acknak));
 	int fromlen = sizeof(from);
+	Window.clear();
 	while(1)
 	{
 		recvfrom(socket,(char*)&packet,sizeof(packet),0,(struct sockaddr*)&from,&fromlen);
-		if(packet.sequencenumber==nextsequence)
+		if (packet.sequencenumber == nextsequence)
 		{
 			acknak.sequencenumber = packet.sequencenumber;
 			acknak.type = PROTOCOL_ACK;
-			printf("receive correct packet %d\n",packet.sequencenumber);
+			printf("receive correct packet %d\n", packet.sequencenumber);
 			IncreaseSequence();//receive successfully then increase next expect sequence
 			recv_packet++;
-			fwrite(packet.data,sizeof(char),packet.length,fin);
-			printf("Received packet : %d\n",recv_packet);
+			fwrite(packet.data, sizeof(char), packet.length, fin);
+			printf("Received packet : %d\n", recv_packet);
 		}
 		else
 		{
-			acknak.sequencenumber = nextsequence;
-			acknak.type = PROTOCOL_NAK;
-			printf("receive wrong packet , number is %d , expecting is %d\n",packet.sequencenumber,nextsequence);
-			//dont need to increase nextsequence
+			auto it = Window.begin();
+			while (it != Window.end()){
+				if (packet.sequencenumber == it->sequencenumber){
+					break;
+				}
+				else if (packet.sequencenumber < it->sequencenumber){
+					Window.insert(it, packet);
+				}
+				else if (it->sequencenumber + 1 == packet.sequencenumber){
+					Window.insert(++it, packet);
+				}
+				it++;
+			}
+			acknak.sequencenumber = packet.sequencenumber;
+			acknak.type = PROTOCOL_ACK;
+			recv_packet++;
 		}
+		
 		sendto(socket,(char*)&acknak,sizeof(acknak),0,(struct sockaddr*)&from,fromlen);
 		if(totalpacketnumber==recv_packet)
 		{
@@ -473,6 +483,6 @@ int Protocol::Receive(FILE *fin,SOCKET socket,SOCKADDR_IN from,int totalpacketnu
 			break;
 		}
 	}
-	printf("gbn receive over\n");
+	printf("receive over\n");
 	return 0;
 }

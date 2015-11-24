@@ -179,7 +179,7 @@ void TcpServer::start()
 			int total = (fileSize/FILECHUNK + (fileSize%FILECHUNK !=0?1:0));
 			int w_size = 4;
 			Protocol *gbn = new Protocol();
-			gbn->Protocol_Implementation(pfile, total, serverSock, ClientAddr, ClientAddr, w_size);
+			gbn->Send(pfile, total, serverSock, ClientAddr, ClientAddr, w_size);
 			fclose(pfile);
 			printf("sending file completed..\n");
 			RecvDuppacket(serverSock,dup,sizeof(dup));

@@ -35,6 +35,7 @@ typedef enum{
 
 typedef struct
 {
+	TYPE isAck;
 	int sequencenumber;
 	int length;
 	char data[FILECHUNK];
@@ -73,7 +74,7 @@ public:
 	int GetLastFrameSeq(int sequenceMax,int total);
 	bool CheckIfSentOver(int base,int sequenceMax,int total);// at the last packet for the file 
 	int MoveWindowForNextPacket(deque<Packet>,ACKNAK);
-	int MoveBase(ACKNAK);
+	int MoveBase(int sequencesNumber);
 	//int MoveBaseToAck(deque<Packet>,ACKNAK);
 	int SendNewFrameOfWindow(SOCKET,deque<Packet>,SOCKADDR_IN);
 	int GetPacketPositionInWindowByAck(deque<Packet>,ACKNAK);
