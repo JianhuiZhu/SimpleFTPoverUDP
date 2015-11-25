@@ -435,12 +435,8 @@ int Protocol::Receive(FILE *fin,SOCKET socket,SOCKADDR_IN from,int totalpacketnu
 									//Already has the packet in window, do nothing
 									break;
 								}
-								else if ((it + 1) != Window.end() && it->sequencenumber + 1 == packet.sequencenumber && (it + 1)->sequencenumber != packet.sequencenumber){
-									Window.insert(it, packet);
-									break;
-								}
 								else if ((it + 1) != Window.end() && it->sequencenumber<packet.sequencenumber && (it + 1)->sequencenumber>packet.sequencenumber){
-									Window.insert(it, packet);
+									Window.insert(it+1, packet);
 									break;
 								}
 								else if ((it + 1) == Window.end()){
@@ -479,15 +475,21 @@ int Protocol::Receive(FILE *fin,SOCKET socket,SOCKADDR_IN from,int totalpacketnu
 									}
 									if (it->sequencenumber < smallerBorder){
 										if (it->sequencenumber > packet.sequencenumber){
+											//Insert in front of the it packet
+											// 9 1  3    2 will go between 1 and 3 as 9 larger than smaller border and 1 smaller than packet number 
 											Window.insert(it, packet);
 											break;
 										}
 										else if ((it + 1) != Window.end() && it->sequencenumber<packet.sequencenumber && (it + 1)->sequencenumber>packet.sequencenumber){
-											Window.insert(it, packet);
+											//insert at next hop location 
+											// here is a bit redundant, 9 1 3  2 will go between 1 and 3
+											Window.insert(it+1, packet);
 											break;
 										}
 										else if ((it + 1) == Window.end()){
 											if (it->sequencenumber > packet.sequencenumber){
+												//insert in front of cur it
+												// 9 3   2 will go just before 3
 												Window.insert(it, packet);
 											}
 											else{
@@ -506,11 +508,13 @@ int Protocol::Receive(FILE *fin,SOCKET socket,SOCKADDR_IN from,int totalpacketnu
 										break;
 									}
 									else if (it->sequencenumber < smallerBorder){
+										//insert in front of it 
 										Window.insert(it, packet);
 										break;
 									}
 									else if ((it + 1) != Window.end() && it->sequencenumber<packet.sequencenumber && ((it + 1)->sequencenumber>packet.sequencenumber || (it + 1)->sequencenumber < smallerBorder)){
-										Window.insert(it, packet);
+										//insert just after it
+										Window.insert(it+1, packet);
 										break;
 									}
 									else if ((it + 1) == Window.end()){
@@ -550,25 +554,33 @@ int Protocol::Receive(FILE *fin,SOCKET socket,SOCKADDR_IN from,int totalpacketnu
 			}
 			else
 			{
-				int curWindowStart = nextsequence;
-				int curWindowNext;
-				if (curWindowStart + windowsize-1 > sequenceMax){
-					curWindowNext = curWindowStart + windowsize - sequenceMax;
+				int packetInWindowResult = sequenceInWindow(packet.sequencenumber);
+				if (packetInWindowResult != -1){
+					acknak.sequencenumber = Window[packetInWindowResult].sequencenumber;
+					acknak.type = PROTOCOL_ACK;
+					sendto(socket, (char*)&acknak, sizeof(acknak), 0, (struct sockaddr*)&from, fromlen);
 				}
-				else{
-					curWindowNext = curWindowStart + windowsize;
-				}
-				if (packet.sequencenumber != curWindowNext&&packet.sequencenumber!=nextsequence){
-					auto it = Window.begin();
-					for (; it != Window.end(); it++){
-						if (packet.sequencenumber == it->sequencenumber){
-							break;
-						}
-					}
-					if (it == Window.end()){
+				else if (nextsequence > windowsize){
+					if (packet.sequencenumber >= nextsequence - windowsize&&packet.sequencenumber <= nextsequence - 1){
 						acknak.sequencenumber = packet.sequencenumber;
 						acknak.type = PROTOCOL_ACK;
 						sendto(socket, (char*)&acknak, sizeof(acknak), 0, (struct sockaddr*)&from, fromlen);
+					}
+				}
+				else{
+					if (nextsequence - 1> 0){
+						if ((packet.sequencenumber >= sequenceMax - abs(nextsequence - windowsize)&&packet.sequencenumber<=sequenceMax) || (packet.sequencenumber>=1&&packet.sequencenumber <= nextsequence - 1)){
+							acknak.sequencenumber = packet.sequencenumber;
+							acknak.type = PROTOCOL_ACK;
+							sendto(socket, (char*)&acknak, sizeof(acknak), 0, (struct sockaddr*)&from, fromlen);
+						}
+					}
+					else{
+						if (packet.sequencenumber > sequenceMax - windowsize&&packet.sequencenumber <= sequenceMax){
+							acknak.sequencenumber = packet.sequencenumber;
+							acknak.type = PROTOCOL_ACK;
+							sendto(socket, (char*)&acknak, sizeof(acknak), 0, (struct sockaddr*)&from, fromlen);
+						}
 					}
 				}
 			}
@@ -582,6 +594,7 @@ int Protocol::Receive(FILE *fin,SOCKET socket,SOCKADDR_IN from,int totalpacketnu
 				int r = SetTimeout(socket,0,300000);
 				if(r>0)
 				{
+					acknak.sequencenumber = i %sequenceMax+1;
 					sendto(socket,(char*)&acknak,sizeof(acknak),0,(struct sockaddr*)&from,fromlen);
 				}
 			}
@@ -590,4 +603,13 @@ int Protocol::Receive(FILE *fin,SOCKET socket,SOCKADDR_IN from,int totalpacketnu
 	}
 	printf("receive over\n");
 	return 0;
+}
+int Protocol::sequenceInWindow(int sequencenumber){
+	int index = 0;
+	for (; index < Window.size(); index++){
+		if (Window[index].sequencenumber == sequencenumber){
+			return index;
+		}
+	}
+	return -1;
 }

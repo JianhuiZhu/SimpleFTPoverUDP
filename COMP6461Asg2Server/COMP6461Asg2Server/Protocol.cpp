@@ -395,7 +395,7 @@ int Protocol::Send(FILE *Fin, int Total, SOCKET socket, SOCKADDR_IN dst, SOCKADD
 						}
 					}
 				}
-				if (numofackpacket == numberoftotalpacket){
+				if (numofackpacket >= numberoftotalpacket&&Window.empty()){
 							Window.clear();
 							break;
 						

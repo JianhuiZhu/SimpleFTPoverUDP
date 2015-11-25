@@ -1,12 +1,9 @@
 start on host : jz-pc
-sent first handshake :41
+sent first handshake :35
 receive ACK for first handshake 
 sent ACK for last handshake
 handshake complete.
 sent packet 1
-time out , resent packet 1
-time out , resent packet 1
-time out , resent packet 1
 time out , resent packet 1
 receive ACK for packet 1
 receive packet 1

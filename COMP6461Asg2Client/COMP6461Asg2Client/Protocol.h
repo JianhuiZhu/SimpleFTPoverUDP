@@ -81,7 +81,7 @@ public:
 	int Send(FILE *,int,SOCKET,SOCKADDR_IN,SOCKADDR_IN,int);
 	set<int> GetPreviousACKNAKInWindow(deque<Packet>,ACKNAK);
 	int get_timeout(struct timeval2, struct timeval *);
-
+	int sequenceInWindow(int sequencenumber);
 	//receiving protocol
 	int Receive(FILE *,SOCKET,SOCKADDR_IN,int,int);
 };
