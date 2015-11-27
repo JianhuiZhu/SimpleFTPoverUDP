@@ -106,14 +106,12 @@ void TcpClient::run(int argc,char * argv[])
 			//recv duplicate ack
 			char dup[100];
 			RecvDuppacket(sock,dup,sizeof(dup));
-			//Sleep(1500);//wait for 1.5seconds for receive to finish handling duplicate(synchronize)
-		    //////////GBN sending/////////////////////////
 			FILE * pfile;
 			pfile = fopen(controlpacket.filename,"rb");
 			int total = (fileSize/FILECHUNK + (fileSize%FILECHUNK !=0?1:0));
 			int w_size = 4;
-			Protocol *gbn = new Protocol();
-			gbn->Send(pfile,total,sock,RouterAddr,from,w_size);
+			Protocol *selectiveRepeat = new Protocol();
+			selectiveRepeat->Send(pfile, total, sock, RouterAddr, from, w_size);
 			fclose(pfile);
 		}
 	}
@@ -164,10 +162,10 @@ void TcpClient::run(int argc,char * argv[])
 		{
 			FILE *pfile;
 			pfile = fopen(cp.filename,"wb");
-			Protocol *gbn = new Protocol();
+			Protocol *selectiveRepeat = new Protocol();
 			int total = (cp.filesize/FILECHUNK + (cp.filesize%FILECHUNK !=0?1:0));
 			int w_size = 4;
-			gbn->Receive(pfile,sock,from,total,w_size);
+			selectiveRepeat->Receive(pfile, sock, from, total, w_size);
 			fclose(pfile);
 			printf("receiving completes...");
 			system("pause");

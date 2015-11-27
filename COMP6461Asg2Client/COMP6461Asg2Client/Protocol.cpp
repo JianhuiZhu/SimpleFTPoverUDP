@@ -144,73 +144,7 @@ void Protocol::PutFileToWindow(FILE *fin)
 	//return 0;
 }
 
-int Protocol::MoveWindowToNAK(deque<Packet> window,ACKNAK acknak)
-{
-	/*
-		Find the location of packet which has not been acknowledged
-	*/
-	int count = 0;
-	int sequence = acknak.sequencenumber;
-	deque<Packet>::iterator it = window.begin();
-	for(;it!=window.end();it++)
-	{
-		if(sequence==it->sequencenumber) //NAK is the next expected seq for receiver,before NAK all received
-			break;
-		count ++;
-	}
-	//pop all packet before NAK
-	if(count==0||count==Window.size())//NAK out of bound ,before or after window
-	{
-		//access the last element's sequence number and +1, check if is larger than maximum sequence number
-		int n = Window.back().sequencenumber + 1;
-		if(n>sequenceMax)
-			n=1;
-		if(acknak.sequencenumber==n)//this case u need move your window!! [1234]5 or[6789]1
-		{
-			//The packets to be sent is less than the window size
-			if(Window.size()>numberoftotalpacket-numberofsentpacket)
-			{
-				for(int i=0;i<Window.size();i++)
-					Window.pop_front();
-				for(int j=0;j<numberoftotalpacket-numberofsentpacket;j++)
-					PutFileToWindow(&fin);
-			}
-			else
-			{
-				for(int i=0;i<Window.size();i++)
-				{
-					Window.pop_front();
-					PutFileToWindow(&fin);
-				}
-			}
-			count = Window.size();//move window size
-		}
-		else
-			return 0;//this case NAK is before window, do not need to move window
-	}
-	//test if the packet rest is less than the step that the window can move most
-	//count is the number that window can move
-	if(count>numberoftotalpacket-numberofsentpacket)
-	{
-		//still pop all the packet before NAK
-		for(int i=0;i<count;i++)
-			Window.pop_front();
-		//but here only put rest packets into window
-		for(int j=0;j<numberoftotalpacket-numberofsentpacket;j++)
-			PutFileToWindow(&fin);
-	}
-	else
-	{
-		//pop packets before NAK.sequence then push new packets from file into window
-		for(int i =0;i<count;i++)
-		{
-			Window.pop_front();
-			PutFileToWindow(&fin);
-		}
-	}
-	MoveBaseToNAK(window,acknak);
-	return count;//return number of step(packet) that window moves
-}
+
 
 //sequence number next to attach to packet
 int Protocol::IncreaseSequence()
@@ -255,12 +189,6 @@ int Protocol::SetTimeout(SOCKET socket,long sec,long usec)
 	return select(0, &fds, 0, 0, &timeout);
 }
 
-int Protocol::MoveBaseToNAK(deque<Packet> window,ACKNAK acknak)
-{
-	int sequence = acknak.sequencenumber;
-	base = sequence;//set base to this NAK sequence
-	return base;//return base
-}
 
 //sequence number for the last packet of file
 int Protocol::GetLastFrameSeq(int sequenceMax,int total)
@@ -269,30 +197,6 @@ int Protocol::GetLastFrameSeq(int sequenceMax,int total)
 	return i;
 }
 
-//if base equal last frame seq, then sender recv all ACK from receiver
-bool Protocol::CheckIfSentOver(int base,int sequenceMax,int total)
-{
-	return base==GetLastFrameSeq(sequenceMax,total);
-}
-
-int Protocol::MoveWindowForNextPacket(deque<Packet> window,ACKNAK acknak)
-{
-	//pop the first packet in window and push_back new packet
-	auto it = Window.begin();
-	int counter = 0;
-	while (it != Window.end()){
-		if (it->isAck == PROTOCOL_ACK){
-			window.pop_front();
-			PutFileToWindow(&fin);
-			counter++;
-		}
-		else{
-			break;
-		}
-	}
-	
-	return 0;
-}
 
 
 int Protocol::SendNewFrameOfWindow(SOCKET socket,deque<Packet> window,SOCKADDR_IN dst)
@@ -302,89 +206,85 @@ int Protocol::SendNewFrameOfWindow(SOCKET socket,deque<Packet> window,SOCKADDR_I
 	return nbytes;
 }
 
-int Protocol::GetPacketPositionInWindowByAck(deque<Packet> window,ACKNAK acknak)
-{
-	int sequence = acknak.sequencenumber;
-	int count = 0;
-	deque<Packet>::iterator it = window.begin();
-	for(;it!=window.end();it++)
-	{
-		if(it->sequencenumber==sequence)
-			break;
-		count++;
-	}
-	return count;//if ack is not in the window count is windowsize
-}
-
-set<int> Protocol::GetPreviousACKNAKInWindow(deque<Packet> window,ACKNAK acknak)
-{
-	set<int> myset;
-	int sequence = acknak.sequencenumber;
-	deque<Packet>::iterator it = window.begin();
-	for(;it!=window.end();it++)
-	{
-		if(it->sequencenumber!=sequence)
-			myset.insert(it->sequencenumber);
-		else
-			break;
-	}
-	return myset;
-}
 
 
 int Protocol::Send(FILE *Fin, int Total, SOCKET socket, SOCKADDR_IN dst, SOCKADDR_IN from, int w_size)
 {
+	int numofackpacket = 0;
 	int fromlen = sizeof(from);
 	initial();
 	windowsize = w_size;
-	sequenceMax = 2 *windowsize +1;
+	sequenceMax = 2 * windowsize + 1;
 	fin = *Fin;
-	lastframesequence = GetLastFrameSeq(sequenceMax,Total);
+	lastframesequence = GetLastFrameSeq(sequenceMax, Total);
 	numberoftotalpacket = Total;
-	initialWindow(&fin,Total);
-	numberofsentpacket += SendWindow(socket,Window,dst);
+	initialWindow(&fin, Total);
+	numberofsentpacket += SendWindow(socket, Window, dst);
 	printf("send inital window!\n");
-	//int count = -1; //temp variable for sequence number in window
-	set<int> checkset;//check if ack is previous ack in window
 	int NAKcheckset = 0;
 	ACKNAK acknak;
-	ZeroMemory(&acknak,sizeof(acknak));
-	int ready; 
+	ZeroMemory(&acknak, sizeof(acknak));
+	int ready;
 	struct timeval2 starttime_ACK;
 	struct timeval2 starttime_NAK;
-	ZeroMemory(&starttime_NAK,sizeof(starttime_NAK));
-	ZeroMemory(&starttime_ACK,sizeof(starttime_ACK));
-	ready = SetTimeout(socket,0,300000);//set time out for first packet in window
-	while(1)
+	ZeroMemory(&starttime_NAK, sizeof(starttime_NAK));
+	ZeroMemory(&starttime_ACK, sizeof(starttime_ACK));
+	ready = SetTimeout(socket, 0, 300000);//set time out for first packet in window
+	while (1)
 	{
 
-		if(ready>0)
+		if (ready>0)
 		{
-			recvfrom(socket,(char*)&acknak,sizeof(acknak),0,(struct sockaddr*)&from,&fromlen);
-				if (Window.front().sequencenumber == acknak.sequencenumber){
-					MoveWindowForNextPacket(Window, acknak);
+			recvfrom(socket, (char*)&acknak, sizeof(acknak), 0, (struct sockaddr*)&from, &fromlen);
+			if (Window.front().sequencenumber == acknak.sequencenumber){
+				if (Window.front().isAck != PROTOCOL_ACK){
+					Window.front().isAck = PROTOCOL_ACK;
+					numofackpacket++;
 				}
-				else{
-					auto it = Window.begin();
-					while (it != Window.end()){
-						if (it->sequencenumber == acknak.sequencenumber){
-							it->isAck = PROTOCOL_ACK;
-							break;
-						}
-						it++;
+
+				int count = 0;
+				for (int cur = 0; cur<Window.size(); count++){
+					if (Window[cur].isAck == PROTOCOL_ACK){
+						Window.pop_front();
+					}
+					else{
+						break;
 					}
 				}
+				for (int counter = 0; counter < count; counter++){
+					if (numofackpacket < numberoftotalpacket){
+						PutFileToWindow(&fin);
+						SendNewFrameOfWindow(socket, Window, dst);
+					}
+				}
+			}
+			else{
+				for (auto it = Window.begin(); it != Window.end(); it++){
+					if (it->sequencenumber == acknak.sequencenumber&&it->isAck != PROTOCOL_ACK){
+						it->isAck = PROTOCOL_ACK;
+						numofackpacket++;
+					}
+				}
+			}
+			if (numofackpacket >= numberoftotalpacket&&Window.empty()){
+				Window.clear();
+				break;
+
+
+			}
+			ready = SetTimeout(socket, 0, 3000000);
+
 
 		}
 		else
 		{
-			SendWindow(socket,Window,dst);
-			ready = SetTimeout(socket,0,300000);
+			SendWindow(socket, Window, dst);
+			ready = SetTimeout(socket, 0, 3000000);
 			printf("timeout and resend window\n");
 			printwindow(Window);
 		}
 	}
-	printf("gbn sent over\n");
+	printf("file sent over\n");
 	return 0;
 }
 

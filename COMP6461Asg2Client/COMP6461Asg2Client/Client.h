@@ -1,9 +1,4 @@
-/*a small file client
-Usage: suppose client is running on sd1.encs.concordia.ca and server is running on sd2.encs.concordia.ca
-.Also suppose there is a file called test.txt on the server.
-In the client,issuse "client sd2.encs.concordia.ca test.txt size" and you can get the size of the file.
-In the client,issuse "client sd2.encs.concordia.ca test.txt time" and you can get creation time of the file
-*/
+
 #define _CRT_SECURE_NO_WARNINGS
 #include <windows.h>
 #include <winsock.h>

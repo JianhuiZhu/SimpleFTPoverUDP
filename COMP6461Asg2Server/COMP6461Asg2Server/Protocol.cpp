@@ -143,73 +143,7 @@ void Protocol::PutFileToWindow(FILE *fin)
 	//return 0;
 }
 
-int Protocol::MoveWindowToNAK(deque<Packet> window,ACKNAK acknak)
-{
-	/*
-		Find the location of packet which has not been acknowledged
-	*/
-	int count = 0;
-	int sequence = acknak.sequencenumber;
-	deque<Packet>::iterator it = window.begin();
-	for(;it!=window.end();it++)
-	{
-		if(sequence==it->sequencenumber) //NAK is the next expected seq for receiver,before NAK all received
-			break;
-		count ++;
-	}
-	//pop all packet before NAK
-	if(count==0||count==Window.size())//NAK out of bound ,before or after window
-	{
-		//access the last element's sequence number and +1, check if is larger than maximum sequence number
-		int n = Window.back().sequencenumber + 1;
-		if(n>sequenceMax)
-			n=1;
-		if(acknak.sequencenumber==n)//this case u need move your window!! [1234]5 or[6789]1
-		{
-			//The packets to be sent is less than the window size
-			if(Window.size()>numberoftotalpacket-numberofsentpacket)
-			{
-				for(int i=0;i<Window.size();i++)
-					Window.pop_front();
-				for(int j=0;j<numberoftotalpacket-numberofsentpacket;j++)
-					PutFileToWindow(&fin);
-			}
-			else
-			{
-				for(int i=0;i<Window.size();i++)
-				{
-					Window.pop_front();
-					PutFileToWindow(&fin);
-				}
-			}
-			count = Window.size();//move window size
-		}
-		else
-			return 0;//this case NAK is before window, do not need to move window
-	}
-	//test if the packet rest is less than the step that the window can move most
-	//count is the number that window can move
-	if(count>numberoftotalpacket-numberofsentpacket)
-	{
-		//still pop all the packet before NAK
-		for(int i=0;i<count;i++)
-			Window.pop_front();
-		//but here only put rest packets into window
-		for(int j=0;j<numberoftotalpacket-numberofsentpacket;j++)
-			PutFileToWindow(&fin);
-	}
-	else
-	{
-		//pop packets before NAK.sequence then push new packets from file into window
-		for(int i =0;i<count;i++)
-		{
-			Window.pop_front();
-			PutFileToWindow(&fin);
-		}
-	}
-	MoveBaseToNAK(window,acknak);
-	return count;//return number of step(packet) that window moves
-}
+
 
 //sequence number next to attach to packet
 int Protocol::IncreaseSequence()
@@ -256,13 +190,6 @@ int Protocol::SetTimeout(SOCKET socket,long sec,long usec)
 	return select(0, &fds, 0, 0, &timeout);
 }
 
-int Protocol::MoveBaseToNAK(deque<Packet> window,ACKNAK acknak)
-{
-	int sequence = acknak.sequencenumber;
-	base = sequence;//set base to this NAK sequence
-	return base;//return base
-}
-
 //sequence number for the last packet of file
 int Protocol::GetLastFrameSeq(int sequenceMax,int total)
 {
@@ -270,32 +197,7 @@ int Protocol::GetLastFrameSeq(int sequenceMax,int total)
 	return i;
 }
 
-//if base equal last frame seq, then sender recv all ACK from receiver
-bool Protocol::CheckIfSentOver(int base,int sequenceMax,int total)
-{
-	return base==GetLastFrameSeq(sequenceMax,total);
-}
 
-int Protocol::MoveWindowForNextPacket(deque<Packet> window,ACKNAK acknak)
-{
-	//pop the first packet in window and push_back new packet
-	auto it = Window.begin();
-	int counter = 0;
-	while (it != Window.end()){
-		if (it->isAck == PROTOCOL_ACK){
-			window.pop_front();
-			//PutFileToWindow(&fin);
-			counter++;
-			break;
-		}
-		else{
-			break;
-		}
-		it++;
-	}
-	
-	return 0;
-}
 
 
 int Protocol::SendNewFrameOfWindow(SOCKET socket,deque<Packet> window,SOCKADDR_IN dst)
@@ -306,34 +208,7 @@ int Protocol::SendNewFrameOfWindow(SOCKET socket,deque<Packet> window,SOCKADDR_I
 	return nbytes;
 }
 
-int Protocol::GetPacketPositionInWindowByAck(deque<Packet> window,ACKNAK acknak)
-{
-	int sequence = acknak.sequencenumber;
-	int count = 0;
-	deque<Packet>::iterator it = window.begin();
-	for(;it!=window.end();it++)
-	{
-		if(it->sequencenumber==sequence)
-			break;
-		count++;
-	}
-	return count;//if ack is not in the window count is windowsize
-}
 
-set<int> Protocol::GetPreviousACKNAKInWindow(deque<Packet> window,ACKNAK acknak)
-{
-	set<int> myset;
-	int sequence = acknak.sequencenumber;
-	deque<Packet>::iterator it = window.begin();
-	for(;it!=window.end();it++)
-	{
-		if(it->sequencenumber!=sequence)
-			myset.insert(it->sequencenumber);
-		else
-			break;
-	}
-	return myset;
-}
 
 
 int Protocol::Send(FILE *Fin, int Total, SOCKET socket, SOCKADDR_IN dst, SOCKADDR_IN from, int w_size)
@@ -349,7 +224,6 @@ int Protocol::Send(FILE *Fin, int Total, SOCKET socket, SOCKADDR_IN dst, SOCKADD
 	initialWindow(&fin,Total);
 	numberofsentpacket += SendWindow(socket,Window,dst);
 	printf("send inital window!\n");
-	set<int> checkset;//check if ack is previous ack in window
 	int NAKcheckset = 0;
 	ACKNAK acknak;
 	ZeroMemory(&acknak,sizeof(acknak));
@@ -413,17 +287,13 @@ int Protocol::Send(FILE *Fin, int Total, SOCKET socket, SOCKADDR_IN dst, SOCKADD
 			printwindow(Window);
 		}
 	}
-	printf("gbn sent over\n");
+	printf("file sent over\n");
 	return 0;
 }
-
 ///////////////////////////////////////////////////////
 //RECEIVE//////////////////////////////////////////
-/*
-Here NEED TO MODIFIED, 
-*/
 
-int Protocol::Receive(FILE *fin,SOCKET socket,SOCKADDR_IN from,int totalpacketnumber,int w_size)
+int Protocol::Receive(FILE *fin, SOCKET socket, SOCKADDR_IN from, int totalpacketnumber, int w_size)
 {
 	initial();
 	windowsize = w_size;
@@ -432,59 +302,216 @@ int Protocol::Receive(FILE *fin,SOCKET socket,SOCKADDR_IN from,int totalpacketnu
 	int recv_packet = 0;
 	Packet packet;
 	ACKNAK acknak;
-	ZeroMemory(&packet,sizeof(packet));
-	ZeroMemory(&acknak,sizeof(acknak));
+	ZeroMemory(&packet, sizeof(packet));
+	ZeroMemory(&acknak, sizeof(acknak));
 	int fromlen = sizeof(from);
 	Window.clear();
-	while(1)
+	while (1)
 	{
-		recvfrom(socket,(char*)&packet,sizeof(packet),0,(struct sockaddr*)&from,&fromlen);
-		if (packet.sequencenumber == nextsequence)
+		recvfrom(socket, (char*)&packet, sizeof(packet), 0, (struct sockaddr*)&from, &fromlen);
+		//validate packet
+		if ((nextsequence + windowsize - 1 <= sequenceMax&&packet.sequencenumber >= nextsequence&&packet.sequencenumber<nextsequence + windowsize) || (nextsequence + windowsize - 1)>sequenceMax && ((packet.sequencenumber<(nextsequence + windowsize) % sequenceMax) || packet.sequencenumber >= nextsequence))
 		{
-			acknak.sequencenumber = packet.sequencenumber;
+
+
+			if (Window.size() == 0){
+				Window.push_back(packet);
+			}
+			else{
+				if (packet.sequencenumber == nextsequence){
+					if (Window.front().sequencenumber != nextsequence){
+						Window.push_front(packet);
+					}
+				}
+				else{
+					auto it = Window.begin();
+					/*
+					first condition: window in between the sequence, like:
+					1 2 3 | 4 5 6 7 8| 9 or 1 2 3 4 | 5 6 7 8 9 |
+					*/
+					if ((nextsequence + windowsize - 1) <= sequenceMax){
+						if (packet.sequencenumber > nextsequence&&packet.sequencenumber >= Window.front().sequencenumber&&packet.sequencenumber < (nextsequence + windowsize)){
+							auto it = Window.begin();
+							for (; it != Window.end(); it++){
+								if (it->sequencenumber == packet.sequencenumber){
+									//Already has the packet in window, do nothing
+									break;
+								}
+								else if ((it + 1) != Window.end() && it->sequencenumber<packet.sequencenumber && (it + 1)->sequencenumber>packet.sequencenumber){
+									Window.insert(it + 1, packet);
+									break;
+								}
+								else if ((it + 1) == Window.end()){
+									if (it->sequencenumber < packet.sequencenumber){
+										Window.push_back(packet);
+										break;
+									}
+									else{
+										Window.insert(it, packet);
+										break;
+									}
+								}
+							}
+						}
+						else if (packet.sequencenumber < Window.front().sequencenumber&&packet.sequencenumber>nextsequence){
+							Window.push_front(packet);
+						}
+					}
+					/*
+					second condition window has two half , the end of sequence and the beginning of sequence
+					1 2 | 3 4 5 6 |7 8 9 or 1 2 3 | 4 5 6 7 | 8 9
+					*/
+					else{
+						/*
+						Judge packet is the smaller half window or bigger half window
+						*/
+						//caculate the smaller half range and bigger half range
+						int smallerBorder = (nextsequence + windowsize) % sequenceMax;
+						if (packet.sequencenumber<smallerBorder || packet.sequencenumber>nextsequence){
+							//packet is belong to smaller half range
+							if (packet.sequencenumber < smallerBorder){
+								for (auto it = Window.begin(); it != Window.end(); it++){
+									if (it->sequencenumber == packet.sequencenumber){
+										//already have this sequence, do nothing
+										break;
+									}
+									if (it->sequencenumber < smallerBorder){
+										if (it->sequencenumber > packet.sequencenumber){
+											//Insert in front of the it packet
+											// 9 1  3    2 will go between 1 and 3 as 9 larger than smaller border and 1 smaller than packet number 
+											Window.insert(it, packet);
+											break;
+										}
+										else if ((it + 1) != Window.end() && it->sequencenumber<packet.sequencenumber && (it + 1)->sequencenumber>packet.sequencenumber){
+											//insert at next hop location 
+											// here is a bit redundant, 9 1 3  2 will go between 1 and 3
+											Window.insert(it + 1, packet);
+											break;
+										}
+										else if ((it + 1) == Window.end()){
+											if (it->sequencenumber > packet.sequencenumber){
+												//insert in front of cur it
+												// 9 3   2 will go just before 3
+												Window.insert(it, packet);
+											}
+											else{
+												Window.push_back(packet);
+												break;
+											}
+										}
+									}
+								}
+							}
+							//packet is belong to bigger half range
+							else{
+								for (auto it = Window.begin(); it != Window.end(); it++){
+									if (it->sequencenumber == packet.sequencenumber){
+										//already have this packet
+										break;
+									}
+									else if (it->sequencenumber < smallerBorder){
+										//insert in front of it 
+										Window.insert(it, packet);
+										break;
+									}
+									else if ((it + 1) != Window.end() && it->sequencenumber<packet.sequencenumber && ((it + 1)->sequencenumber>packet.sequencenumber || (it + 1)->sequencenumber < smallerBorder)){
+										//insert just after it
+										Window.insert(it + 1, packet);
+										break;
+									}
+									else if ((it + 1) == Window.end()){
+										if (it->sequencenumber < smallerBorder){
+											Window.insert(it, packet);
+											break;
+										}
+										else if (it->sequencenumber > packet.sequencenumber){
+											Window.insert(it, packet);
+											break;
+										}
+										else{
+											Window.push_back(packet);
+											break;
+										}
+									}
+								}
+							}
+						}
+					}
+				}
+			}
+		}
+		if (Window.size() != 0 && Window.front().sequencenumber == nextsequence&&recv_packet<totalpacketnumber)
+		{
+
+			acknak.sequencenumber = Window.front().sequencenumber;
 			acknak.type = PROTOCOL_ACK;
-			printf("receive correct packet %d\n", packet.sequencenumber);
+			printf("receive correct packet %d\n", Window.front().sequencenumber);
 			IncreaseSequence();//receive successfully then increase next expect sequence
 			recv_packet++;
-			fwrite(packet.data, sizeof(char), packet.length, fin);
+			fwrite(Window.front().data, sizeof(char), Window.front().length, fin);
+			Window.pop_front();
 			printf("Received packet : %d\n", recv_packet);
+			sendto(socket, (char*)&acknak, sizeof(acknak), 0, (struct sockaddr*)&from, fromlen);
+			printwindow(Window);
 		}
 		else
 		{
-			auto it = Window.begin();
-			while (it != Window.end()){
-				if (packet.sequencenumber == it->sequencenumber){
-					break;
-				}
-				else if (packet.sequencenumber < it->sequencenumber){
-					Window.insert(it, packet);
-				}
-				else if (it->sequencenumber + 1 == packet.sequencenumber){
-					Window.insert(++it, packet);
-				}
-				it++;
+			int packetInWindowResult = sequenceInWindow(packet.sequencenumber);
+			if (packetInWindowResult != -1){
+				acknak.sequencenumber = Window[packetInWindowResult].sequencenumber;
+				acknak.type = PROTOCOL_ACK;
+				sendto(socket, (char*)&acknak, sizeof(acknak), 0, (struct sockaddr*)&from, fromlen);
 			}
-			acknak.sequencenumber = packet.sequencenumber;
-			acknak.type = PROTOCOL_ACK;
-			recv_packet++;
+			else if (nextsequence > windowsize){
+				if (packet.sequencenumber >= nextsequence - windowsize&&packet.sequencenumber <= nextsequence - 1){
+					acknak.sequencenumber = packet.sequencenumber;
+					acknak.type = PROTOCOL_ACK;
+					sendto(socket, (char*)&acknak, sizeof(acknak), 0, (struct sockaddr*)&from, fromlen);
+				}
+			}
+			else{
+				if (nextsequence - 1> 0){
+					if ((packet.sequencenumber >= sequenceMax - abs(nextsequence - windowsize) && packet.sequencenumber <= sequenceMax) || (packet.sequencenumber >= 1 && packet.sequencenumber <= nextsequence - 1)){
+						acknak.sequencenumber = packet.sequencenumber;
+						acknak.type = PROTOCOL_ACK;
+						sendto(socket, (char*)&acknak, sizeof(acknak), 0, (struct sockaddr*)&from, fromlen);
+					}
+				}
+				else{
+					if (packet.sequencenumber > sequenceMax - windowsize&&packet.sequencenumber <= sequenceMax){
+						acknak.sequencenumber = packet.sequencenumber;
+						acknak.type = PROTOCOL_ACK;
+						sendto(socket, (char*)&acknak, sizeof(acknak), 0, (struct sockaddr*)&from, fromlen);
+					}
+				}
+			}
 		}
-		
-		sendto(socket,(char*)&acknak,sizeof(acknak),0,(struct sockaddr*)&from,fromlen);
-		if(totalpacketnumber==recv_packet)
+
+
+
+		if (totalpacketnumber == recv_packet)
 		{
-			for(int i=0;i<10;i++)
+			for (int i = 0; i<10; i++)
 			{
-				int r = SetTimeout(socket,0,300000);
-				if(r>0)
+				int r = SetTimeout(socket, 0, 300000);
+				if (r>0)
 				{
-					//recvfrom(socket,(char*)&packet,sizeof(packet),0,(struct sockaddr*)&from,&fromlen);
-					sendto(socket,(char*)&acknak,sizeof(acknak),0,(struct sockaddr*)&from,fromlen);
+					acknak.sequencenumber = i %sequenceMax + 1;
+					sendto(socket, (char*)&acknak, sizeof(acknak), 0, (struct sockaddr*)&from, fromlen);
 				}
 			}
-			//sendto(socket,(char*)&acknak,sizeof(acknak),0,(struct sockaddr*)&from,fromlen);
 			break;
 		}
 	}
 	printf("receive over\n");
 	return 0;
+}
+int Protocol::sequenceInWindow(int sequencenumber){
+	int index = 0;
+	for (; index < Window.size(); index++){
+		if (Window[index].sequencenumber == sequencenumber){
+			return index;
+		}
+	}
+	return -1;
 }

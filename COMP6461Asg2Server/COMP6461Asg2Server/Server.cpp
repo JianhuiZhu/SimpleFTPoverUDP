@@ -117,10 +117,10 @@ void TcpServer::start()
 
 		FILE *pfile;
 		pfile = fopen(controlpacket.filename,"wb");
-		Protocol *gbn = new Protocol();
+		Protocol *selectiveRepeat = new Protocol();
 		int total = (controlpacket.filesize/FILECHUNK + (controlpacket.filesize%FILECHUNK !=0?1:0));
 		int w_size = 4;
-		gbn->Receive(pfile,serverSock,ClientAddr,total,w_size);
+		selectiveRepeat->Receive(pfile, serverSock, ClientAddr, total, w_size);
 		fclose(pfile);
 		printf("receiving completes...");
 		system("pause");
@@ -173,13 +173,12 @@ void TcpServer::start()
 			//handle duplicate ack
 			char dup[100];
 			RecvDuppacket(serverSock,dup,sizeof(dup));
-			//////////GBN sending/////////////////////////
 			FILE * pfile;
 			pfile = fopen(cp.filename,"rb");
 			int total = (fileSize/FILECHUNK + (fileSize%FILECHUNK !=0?1:0));
 			int w_size = 4;
-			Protocol *gbn = new Protocol();
-			gbn->Send(pfile, total, serverSock, ClientAddr, ClientAddr, w_size);
+			Protocol *selectiveRepeat = new Protocol();
+			selectiveRepeat->Send(pfile, total, serverSock, ClientAddr, ClientAddr, w_size);
 			fclose(pfile);
 			printf("sending file completed..\n");
 			RecvDuppacket(serverSock,dup,sizeof(dup));

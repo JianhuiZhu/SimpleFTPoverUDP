@@ -66,22 +66,14 @@ public:
 	int initial();
 	int initialWindow(FILE *fin,int total); //put w_size packets into window
 	void PutFileToWindow(FILE *fin);
-	int MoveWindowToNAK(deque<Packet>,ACKNAK);
 	int SendWindow(SOCKET,deque<Packet>,SOCKADDR_IN);
 	int IncreaseSequence();
 	int SetTimeout(SOCKET,long,long);
-	int MoveBaseToNAK(deque<Packet>,ACKNAK);
 	int GetLastFrameSeq(int sequenceMax,int total);
-	bool CheckIfSentOver(int base,int sequenceMax,int total);// at the last packet for the file 
-	int MoveWindowForNextPacket(deque<Packet>,ACKNAK);
-	int MoveBase(int sequencesNumber);
-	//int MoveBaseToAck(deque<Packet>,ACKNAK);
 	int SendNewFrameOfWindow(SOCKET,deque<Packet>,SOCKADDR_IN);
-	int GetPacketPositionInWindowByAck(deque<Packet>,ACKNAK);
 	int Send(FILE *,int,SOCKET,SOCKADDR_IN,SOCKADDR_IN,int);
-	set<int> GetPreviousACKNAKInWindow(deque<Packet>,ACKNAK);
 	int get_timeout(struct timeval2, struct timeval *);
-
+	int sequenceInWindow(int sequencenumber);
 	//receiving protocol
 	int Receive(FILE *,SOCKET,SOCKADDR_IN,int,int);
 };
